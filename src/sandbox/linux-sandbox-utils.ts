@@ -958,10 +958,12 @@ async function generateFilesystemArgs(
  *   - Filesystem restrictions are applied (read-only mounts, bind mounts, etc.)
  *   - Socat processes start and connect to Unix socket bridges (can use socket(AF_UNIX, ...))
  *
- * Stage 2: apply-seccomp - Seccomp filter application (ONLY seccomp)
- *   - apply-seccomp binary applies seccomp filter via prctl(PR_SET_SECCOMP)
- *   - Sets PR_SET_NO_NEW_PRIVS to allow seccomp without root
+ * Stage 2: apply-seccomp - Nested PID namespace + seccomp filter
+ *   - apply-seccomp creates a nested user+PID+mount namespace and remounts /proc
+ *   - Inside, apply-seccomp becomes PID 1 (non-dumpable init/reaper)
+ *   - Forks, sets PR_SET_NO_NEW_PRIVS, applies seccomp via prctl(PR_SET_SECCOMP)
  *   - Execs user command with seccomp active (cannot create new Unix sockets)
+ *   - User command cannot see or ptrace bwrap/bash/socat (separate PID namespace)
  *
  * This solves the conflict between:
  * - Security: Blocking arbitrary Unix socket creation in user commands
@@ -1161,6 +1163,12 @@ export async function wrapCommandWithSandboxLinux(
       // Mount fresh /proc if PID namespace is isolated (secure mode)
       bwrapArgs.push('--proc', '/proc')
     }
+
+    // apply-seccomp obtains CAP_SYS_ADMIN for its nested PID+mount unshare
+    // by creating a nested user namespace. This requires the host to permit
+    // capability-bearing unprivileged user namespaces (the same requirement
+    // bwrap itself has when not installed setuid). See README for the
+    // Ubuntu 24.04 sysctl if AppArmor restricts this.
 
     // ========== COMMAND ==========
     // Use the user's shell (zsh, bash, etc.) to ensure aliases/snapshots work
