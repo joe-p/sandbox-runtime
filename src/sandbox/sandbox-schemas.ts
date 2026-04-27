@@ -33,6 +33,7 @@ export interface FsReadRestrictionConfig {
 export interface FsWriteRestrictionConfig {
   allowOnly: string[]
   denyWithinAllow: string[]
+  skipMandatoryDenyPatterns?: boolean
 }
 
 /**

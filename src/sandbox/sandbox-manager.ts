@@ -497,6 +497,7 @@ function getFsWriteConfig(): FsWriteRestrictionConfig {
   return {
     allowOnly,
     denyWithinAllow: denyPaths,
+    skipMandatoryDenyPatterns: config.filesystem.skipMandatoryDenyPatterns,
   }
 }
 
@@ -628,6 +629,9 @@ async function wrapWithSandbox(
     denyWithinAllow: stripWriteGlobs(
       customConfig?.filesystem?.denyWrite ?? config?.filesystem.denyWrite ?? [],
     ),
+    skipMandatoryDenyPatterns:
+      customConfig?.filesystem?.skipMandatoryDenyPatterns ??
+      config?.filesystem?.skipMandatoryDenyPatterns,
   }
   const rawDenyRead =
     customConfig?.filesystem?.denyRead ?? config?.filesystem.denyRead ?? []
