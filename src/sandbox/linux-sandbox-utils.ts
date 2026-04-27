@@ -719,14 +719,17 @@ async function generateFilesystemArgs(
     }
 
     // Deny writes within allowed paths (user-specified + mandatory denies)
+    const mandatoryDenyPaths = writeConfig.skipMandatoryDenyPatterns
+      ? []
+      : await linuxGetMandatoryDenyPaths(
+          ripgrepConfig,
+          mandatoryDenySearchDepth,
+          allowGitConfig,
+          abortSignal,
+        )
     const denyPaths = [
       ...(writeConfig.denyWithinAllow || []),
-      ...(await linuxGetMandatoryDenyPaths(
-        ripgrepConfig,
-        mandatoryDenySearchDepth,
-        allowGitConfig,
-        abortSignal,
-      )),
+      ...mandatoryDenyPaths,
     ]
 
     // Dedup post-normalization: entries like ['~/.foo', '/home/user/.foo']

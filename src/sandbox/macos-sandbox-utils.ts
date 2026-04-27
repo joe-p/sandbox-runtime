@@ -358,9 +358,12 @@ function generateWriteRules(
   }
 
   // Combine user-specified and mandatory deny patterns (no ripgrep needed on macOS)
+  const mandatoryDenyPatterns = config.skipMandatoryDenyPatterns
+    ? []
+    : macGetMandatoryDenyPatterns(allowGitConfig)
   const denyPaths = [
     ...(config.denyWithinAllow || []),
-    ...macGetMandatoryDenyPatterns(allowGitConfig),
+    ...mandatoryDenyPatterns,
   ]
 
   for (const pathPattern of denyPaths) {

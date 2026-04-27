@@ -192,6 +192,12 @@ export const FilesystemConfigSchema = z.object({
     .describe(
       'Allow writes to .git/config files (default: false). Enables git remote URL updates while keeping .git/hooks protected.',
     ),
+  skipMandatoryDenyPatterns: z
+    .boolean()
+    .optional()
+    .describe(
+      'Skip mandatory deny patterns for dangerous files like .git/hooks, .env, etc. (default: false). Use with caution as this reduces security protection.',
+    ),
 })
 
 /**
