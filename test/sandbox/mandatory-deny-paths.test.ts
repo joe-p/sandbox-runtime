@@ -466,6 +466,190 @@ describe.if(isSupportedPlatform)(
       })
     })
 
+    describe('skipMandatoryDenyPatterns option', () => {
+      async function runSandboxedWriteWithSkipMandatory(
+        filePath: string,
+        content: string,
+        skipMandatoryDenyPatterns: boolean,
+        allowGitConfig = false,
+      ): Promise<{ success: boolean; stderr: string }> {
+        const platform = getPlatform()
+        const command = `echo '${content}' > '${filePath}'`
+
+        const writeConfig = {
+          allowOnly: ['.'],
+          denyWithinAllow: [],
+          skipMandatoryDenyPatterns,
+        }
+
+        let wrappedCommand: string
+        if (platform === 'macos') {
+          wrappedCommand = wrapCommandWithSandboxMacOS({
+            command,
+            needsNetworkRestriction: false,
+            readConfig: undefined,
+            writeConfig,
+            allowGitConfig,
+          })
+        } else {
+          wrappedCommand = await wrapCommandWithSandboxLinux({
+            command,
+            needsNetworkRestriction: false,
+            readConfig: undefined,
+            writeConfig,
+            allowGitConfig,
+          })
+        }
+
+        const result = spawnSync(wrappedCommand, {
+          shell: true,
+          encoding: 'utf8',
+          timeout: 10000,
+        })
+
+        return {
+          success: result.status === 0,
+          stderr: result.stderr || '',
+        }
+      }
+
+      it('blocks writes to dangerous files when skipMandatoryDenyPatterns is false (default)', async () => {
+        // Reset files to original content
+        writeFileSync('.bashrc', ORIGINAL_CONTENT)
+        writeFileSync('.zshrc', ORIGINAL_CONTENT)
+        writeFileSync('.mcp.json', ORIGINAL_CONTENT)
+        writeFileSync('.git/hooks/pre-commit', ORIGINAL_CONTENT)
+
+        const bashrcResult = await runSandboxedWriteWithSkipMandatory(
+          '.bashrc',
+          MODIFIED_CONTENT,
+          false,
+        )
+        expect(bashrcResult.success).toBe(false)
+        expect(readFileSync('.bashrc', 'utf8')).toBe(ORIGINAL_CONTENT)
+
+        const zshrcResult = await runSandboxedWriteWithSkipMandatory(
+          '.zshrc',
+          MODIFIED_CONTENT,
+          false,
+        )
+        expect(zshrcResult.success).toBe(false)
+        expect(readFileSync('.zshrc', 'utf8')).toBe(ORIGINAL_CONTENT)
+
+        const mcpResult = await runSandboxedWriteWithSkipMandatory(
+          '.mcp.json',
+          MODIFIED_CONTENT,
+          false,
+        )
+        expect(mcpResult.success).toBe(false)
+        expect(readFileSync('.mcp.json', 'utf8')).toBe(ORIGINAL_CONTENT)
+
+        const hooksResult = await runSandboxedWriteWithSkipMandatory(
+          '.git/hooks/pre-commit',
+          MODIFIED_CONTENT,
+          false,
+        )
+        expect(hooksResult.success).toBe(false)
+        expect(readFileSync('.git/hooks/pre-commit', 'utf8')).toBe(
+          ORIGINAL_CONTENT,
+        )
+      })
+
+      it('allows writes to dangerous files when skipMandatoryDenyPatterns is true', async () => {
+        // Reset files to original content
+        writeFileSync('.bashrc', ORIGINAL_CONTENT)
+        writeFileSync('.zshrc', ORIGINAL_CONTENT)
+        writeFileSync('.mcp.json', ORIGINAL_CONTENT)
+        writeFileSync('.git/hooks/pre-commit', ORIGINAL_CONTENT)
+
+        const bashrcResult = await runSandboxedWriteWithSkipMandatory(
+          '.bashrc',
+          MODIFIED_CONTENT,
+          true,
+        )
+        expect(bashrcResult.success).toBe(true)
+        expect(readFileSync('.bashrc', 'utf8').trim()).toBe(MODIFIED_CONTENT)
+
+        const zshrcResult = await runSandboxedWriteWithSkipMandatory(
+          '.zshrc',
+          MODIFIED_CONTENT,
+          true,
+        )
+        expect(zshrcResult.success).toBe(true)
+        expect(readFileSync('.zshrc', 'utf8').trim()).toBe(MODIFIED_CONTENT)
+
+        const mcpResult = await runSandboxedWriteWithSkipMandatory(
+          '.mcp.json',
+          MODIFIED_CONTENT,
+          true,
+        )
+        expect(mcpResult.success).toBe(true)
+        expect(readFileSync('.mcp.json', 'utf8').trim()).toBe(MODIFIED_CONTENT)
+
+        const hooksResult = await runSandboxedWriteWithSkipMandatory(
+          '.git/hooks/pre-commit',
+          MODIFIED_CONTENT,
+          true,
+        )
+        expect(hooksResult.success).toBe(true)
+        expect(readFileSync('.git/hooks/pre-commit', 'utf8').trim()).toBe(
+          MODIFIED_CONTENT,
+        )
+      })
+
+      it('blocks .git/config when skipMandatoryDenyPatterns is true but allowGitConfig is false', async () => {
+        writeFileSync('.git/config', ORIGINAL_CONTENT)
+
+        const result = await runSandboxedWriteWithSkipMandatory(
+          '.git/config',
+          MODIFIED_CONTENT,
+          true,
+          false,
+        )
+
+        expect(result.success).toBe(false)
+        expect(readFileSync('.git/config', 'utf8')).toBe(ORIGINAL_CONTENT)
+      })
+
+      it('allows all dangerous files when both skipMandatoryDenyPatterns and allowGitConfig are true', async () => {
+        // Reset files to original content
+        writeFileSync('.bashrc', ORIGINAL_CONTENT)
+        writeFileSync('.git/config', ORIGINAL_CONTENT)
+        writeFileSync('.git/hooks/pre-commit', ORIGINAL_CONTENT)
+
+        const bashrcResult = await runSandboxedWriteWithSkipMandatory(
+          '.bashrc',
+          MODIFIED_CONTENT,
+          true,
+          true,
+        )
+        expect(bashrcResult.success).toBe(true)
+        expect(readFileSync('.bashrc', 'utf8').trim()).toBe(MODIFIED_CONTENT)
+
+        const gitConfigResult = await runSandboxedWriteWithSkipMandatory(
+          '.git/config',
+          MODIFIED_CONTENT,
+          true,
+          true,
+        )
+        expect(gitConfigResult.success).toBe(true)
+        expect(readFileSync('.git/config', 'utf8').trim()).toBe(
+          MODIFIED_CONTENT,
+        )
+
+        const hooksResult = await runSandboxedWriteWithSkipMandatory(
+          '.git/hooks/pre-commit',
+          MODIFIED_CONTENT,
+          true,
+          true,
+        )
+        expect(hooksResult.success).toBe(true)
+        expect(readFileSync('.git/hooks/pre-commit', 'utf8').trim()).toBe(
+          MODIFIED_CONTENT,
+        )
+      })
+    })
+
     describe.if(isLinux)(
       'Non-existent deny path protection and cleanup (Linux only)',
       () => {
