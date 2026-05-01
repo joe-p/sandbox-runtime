@@ -620,3 +620,146 @@ describe('rm in allowWrite under denyRead ancestor (issue #171)', () => {
     )
   })
 })
+
+/**
+ * Tests for denyReadAfterAllow (denyAfterAllow) functionality.
+ *
+ * denyReadAfterAllow takes precedence over allowRead, allowing specific
+ * files within otherwise allowed directories to be blocked. This is useful
+ * for blocking sensitive files like .env or .npmrc in a workspace.
+ */
+describe('denyReadAfterAllow precedence over allowRead', () => {
+  const TEST_BASE_DIR = join(
+    tmpdir(),
+    'deny-read-after-allow-test-' + Date.now(),
+  )
+  const ALLOWED_DIR = join(TEST_BASE_DIR, 'allowed')
+  const SECRET_FILE = join(ALLOWED_DIR, 'secret.txt')
+  const NORMAL_FILE = join(ALLOWED_DIR, 'normal.txt')
+  const SECRET_CONTENT = 'SECRET_DATA'
+  const NORMAL_CONTENT = 'NORMAL_DATA'
+
+  beforeAll(() => {
+    if (!isSupportedPlatform) return
+
+    mkdirSync(ALLOWED_DIR, { recursive: true })
+    writeFileSync(SECRET_FILE, SECRET_CONTENT)
+    writeFileSync(NORMAL_FILE, NORMAL_CONTENT)
+  })
+
+  afterAll(() => {
+    if (existsSync(TEST_BASE_DIR)) {
+      rmSync(TEST_BASE_DIR, { recursive: true, force: true })
+    }
+  })
+
+  describe('macOS Seatbelt', () => {
+    it.if(isMacOS)(
+      'should block reading specific files in an allowed directory',
+      () => {
+        const readConfig: FsReadRestrictionConfig = {
+          denyOnly: [TEST_BASE_DIR],
+          allowWithinDeny: [ALLOWED_DIR],
+          denyAfterAllow: [SECRET_FILE],
+        }
+
+        const wrappedCommand = wrapCommandWithSandboxMacOS({
+          command: `cat ${SECRET_FILE}`,
+          needsNetworkRestriction: false,
+          readConfig,
+          writeConfig: undefined,
+        })
+
+        const result = spawnSync(wrappedCommand, {
+          shell: true,
+          encoding: 'utf8',
+          timeout: 5000,
+        })
+
+        expect(result.status).not.toBe(0)
+      },
+    )
+
+    it.if(isMacOS)(
+      'should allow reading non-denied files in the same allowed directory',
+      () => {
+        const readConfig: FsReadRestrictionConfig = {
+          denyOnly: [TEST_BASE_DIR],
+          allowWithinDeny: [ALLOWED_DIR],
+          denyAfterAllow: [SECRET_FILE],
+        }
+
+        const wrappedCommand = wrapCommandWithSandboxMacOS({
+          command: `cat ${NORMAL_FILE}`,
+          needsNetworkRestriction: false,
+          readConfig,
+          writeConfig: undefined,
+        })
+
+        const result = spawnSync(wrappedCommand, {
+          shell: true,
+          encoding: 'utf8',
+          timeout: 5000,
+        })
+
+        expect(result.status).toBe(0)
+        expect(result.stdout).toContain(NORMAL_CONTENT)
+      },
+    )
+  })
+
+  describe('Linux bwrap', () => {
+    it.if(isLinux)(
+      'should block reading specific files in an allowed directory',
+      async () => {
+        const readConfig: FsReadRestrictionConfig = {
+          denyOnly: [TEST_BASE_DIR],
+          allowWithinDeny: [ALLOWED_DIR],
+          denyAfterAllow: [SECRET_FILE],
+        }
+
+        const wrappedCommand = await wrapCommandWithSandboxLinux({
+          command: `cat ${SECRET_FILE}`,
+          needsNetworkRestriction: false,
+          readConfig,
+          writeConfig: undefined,
+        })
+
+        const result = spawnSync(wrappedCommand, {
+          shell: true,
+          encoding: 'utf8',
+          timeout: 5000,
+        })
+
+        expect(result.status).not.toBe(0)
+      },
+    )
+
+    it.if(isLinux)(
+      'should allow reading non-denied files in the same allowed directory',
+      async () => {
+        const readConfig: FsReadRestrictionConfig = {
+          denyOnly: [TEST_BASE_DIR],
+          allowWithinDeny: [ALLOWED_DIR],
+          denyAfterAllow: [SECRET_FILE],
+        }
+
+        const wrappedCommand = await wrapCommandWithSandboxLinux({
+          command: `cat ${NORMAL_FILE}`,
+          needsNetworkRestriction: false,
+          readConfig,
+          writeConfig: undefined,
+        })
+
+        const result = spawnSync(wrappedCommand, {
+          shell: true,
+          encoding: 'utf8',
+          timeout: 5000,
+        })
+
+        expect(result.status).toBe(0)
+        expect(result.stdout).toContain(NORMAL_CONTENT)
+      },
+    )
+  })
+})

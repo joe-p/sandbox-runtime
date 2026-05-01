@@ -185,8 +185,7 @@ export const FilesystemConfigSchema = z.object({
     .optional()
     .describe(
       'Paths to deny reading that take precedence over allowRead. Used to block specific files ' +
-        'within directories that are otherwise allowed. These rules are applied after allowRead in the seatbelt profile. ' +
-        'Only supported on macOS (ignored on Linux).',
+        'within directories that are otherwise allowed. These rules are applied after allowRead.',
     ),
   allowWrite: z
     .array(filesystemPathSchema)

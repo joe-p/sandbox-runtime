@@ -115,7 +115,7 @@ Both filesystem and network isolation are required for effective sandboxing. Wit
 
 **Filesystem Isolation** enforces read and write restrictions:
 
-- **Read** (deny-then-allow-then-deny pattern): By default, read access is allowed everywhere. You can deny broad regions (e.g., `/Users`) and then re-allow specific paths within them (e.g., `.`). `allowRead` takes precedence over `denyRead`. On macOS, you can further deny specific files within allowed paths using `denyReadAfterAllow`, which takes precedence over `allowRead`. This is the opposite of write, where `denyWrite` takes precedence over `allowWrite`.
+- **Read** (deny-then-allow-then-deny pattern): By default, read access is allowed everywhere. You can deny broad regions (e.g., `/Users`) and then re-allow specific paths within them (e.g., `.`). `allowRead` takes precedence over `denyRead`. You can further deny specific files within allowed paths using `denyReadAfterAllow`, which takes precedence over `allowRead`. This is the opposite of write, where `denyWrite` takes precedence over `allowWrite`.
 - **Write** (allow-only pattern): By default, write access is denied everywhere. You must explicitly allow paths (e.g., `.`, `/tmp`). An empty allow list means no write access.
 
 **Network Isolation** (allow-only pattern): By default, all network access is denied. You must explicitly allow domains. An empty allowedDomains list means no network access. Network traffic is routed through proxy servers running on the host:
@@ -306,7 +306,7 @@ Uses two different patterns:
 
 - `filesystem.denyRead` - Array of paths to deny read access. Empty array = full read access.
 - `filesystem.allowRead` - Array of paths to re-allow read access within denied regions (takes precedence over denyRead). **Note:** this is the opposite of write, where `denyWrite` takes precedence over `allowWrite`.
-- `filesystem.denyReadAfterAllow` - _(macOS only)_ Array of paths to deny read access that takes precedence over `allowRead`. Use this to block specific files within directories that are otherwise allowed. These rules are applied after `allowRead` in the seatbelt profile, allowing them to override previous allow rules. Ignored on Linux.
+- `filesystem.denyReadAfterAllow` - Array of paths to deny read access that takes precedence over `allowRead`. Use this to block specific files within directories that are otherwise allowed. These rules are applied after `allowRead`, allowing them to override previous allow rules.
 
 **Write restrictions** (allow-only pattern) - all writes denied by default:
 
@@ -408,7 +408,7 @@ Examples:
 
 This denies reading anything under `/Users` (or `/home` on Linux), then re-allows the current working directory. System paths (`/usr`, `/lib`, etc.) remain readable.
 
-**Block sensitive files in allowed workspace** (macOS only):
+**Block sensitive files in allowed workspace**:
 
 ```json
 {
@@ -426,7 +426,7 @@ This denies reading anything under `/Users` (or `/home` on Linux), then re-allow
 }
 ```
 
-Use `denyReadAfterAllow` to block specific files within an otherwise readable directory. This is useful for preventing access to sensitive files (`.env`, `.npmrc`, SSH keys, etc.) while allowing general workspace access. Note that `denyReadAfterAllow` is only supported on macOS and is ignored on Linux.
+Use `denyReadAfterAllow` to block specific files within an otherwise readable directory. This is useful for preventing access to sensitive files (`.env`, `.npmrc`, SSH keys, etc.) while allowing general workspace access.
 
 ### Common Issues and Tips
 
@@ -536,11 +536,11 @@ Filesystem restrictions are enforced at the OS level:
 
 **Default filesystem permissions:**
 
-- **Read** (deny-then-allow): Allowed everywhere by default. You can deny broad regions, then re-allow specific paths within them. `allowRead` takes precedence over `denyRead`. On macOS, `denyReadAfterAllow` can block specific files within allowed directories.
+- **Read** (deny-then-allow): Allowed everywhere by default. You can deny broad regions, then re-allow specific paths within them. `allowRead` takes precedence over `denyRead`. Use `denyReadAfterAllow` to block specific files within allowed directories.
 
   - Example: `denyRead: ["~/.ssh"]` to block access to SSH keys
   - Example: `denyRead: ["/Users"], allowRead: ["."]` to block all of `/Users` except the workspace
-  - Example: `denyRead: ["/Users"], allowRead: ["."], denyReadAfterAllow: [".env"]` to block `.env` files in the workspace (macOS only)
+  - Example: `denyRead: ["/Users"], allowRead: ["."], denyReadAfterAllow: [".env"]` to block `.env` files in the workspace
   - Empty `denyRead: []` = full read access (nothing denied)
 
 - **Write** (allow-only): Denied everywhere by default. You must explicitly allow paths.
@@ -551,7 +551,7 @@ Filesystem restrictions are enforced at the OS level:
 
 **Precedence for reads vs writes:**
 
-- **Reads**: `denyReadAfterAllow` > `allowRead` > `denyRead` (macOS only - `denyReadAfterAllow` allows blocking specific files within allowed directories)
+- **Reads**: `denyReadAfterAllow` > `allowRead` > `denyRead` (use `denyReadAfterAllow` to block specific files within allowed directories)
 - **Writes**: `denyWrite` > `allowWrite` (deny takes precedence)
 
 This lets you carve out readable regions within denied areas, and carve out protected regions within writable areas.

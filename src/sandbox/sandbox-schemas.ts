@@ -19,9 +19,8 @@ export interface FsReadRestrictionConfig {
   /**
    * Paths to deny that take precedence over allowWithinDeny.
    * Used to block specific files within directories that are otherwise allowed.
-   * These rules are applied after allowWithinDeny in the seatbelt profile,
-   * allowing them to override previous allow rules.
-   * Only supported on macOS (ignored on Linux).
+   * These rules are applied after allowWithinDeny, allowing them to override
+   * previous allow rules.
    */
   denyAfterAllow?: string[]
 }
