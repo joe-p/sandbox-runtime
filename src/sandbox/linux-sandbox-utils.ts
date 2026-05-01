@@ -719,14 +719,26 @@ async function generateFilesystemArgs(
     }
 
     // Deny writes within allowed paths (user-specified + mandatory denies)
+    const allMandatoryDenyPaths = await linuxGetMandatoryDenyPaths(
+      ripgrepConfig,
+      mandatoryDenySearchDepth,
+      allowGitConfig,
+      abortSignal,
+    )
+
+    // When skipMandatoryDenyPatterns is true, we skip all mandatory patterns
+    // EXCEPT .git/config (which is controlled separately by allowGitConfig)
+    const gitConfigPatterns = allMandatoryDenyPaths.filter(p =>
+      p.includes('.git/config'),
+    )
+
+    // Apply mandatory deny patterns:
+    // - .git/config is ALWAYS controlled by allowGitConfig (not affected by skipMandatoryDenyPatterns)
+    // - Other mandatory patterns are skipped if skipMandatoryDenyPatterns is true
     const mandatoryDenyPaths = writeConfig.skipMandatoryDenyPatterns
-      ? []
-      : await linuxGetMandatoryDenyPaths(
-          ripgrepConfig,
-          mandatoryDenySearchDepth,
-          allowGitConfig,
-          abortSignal,
-        )
+      ? gitConfigPatterns
+      : allMandatoryDenyPaths
+
     const denyPaths = [
       ...(writeConfig.denyWithinAllow || []),
       ...mandatoryDenyPaths,
