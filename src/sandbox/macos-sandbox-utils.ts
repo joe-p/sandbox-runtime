@@ -271,6 +271,27 @@ function generateReadRules(
     }
   }
 
+  // Deny specific paths after allows (denyAfterAllow takes precedence over allowWithinDeny)
+  // This allows blocking specific files within otherwise allowed directories
+  for (const pathPattern of config.denyAfterAllow || []) {
+    const normalizedPath = normalizePathForSandbox(pathPattern)
+
+    if (containsGlobChars(normalizedPath)) {
+      const regexPattern = globToRegex(normalizedPath)
+      rules.push(
+        `(deny file-read*`,
+        `  (regex ${escapePath(regexPattern)})`,
+        `  (with message "${logTag}"))`,
+      )
+    } else {
+      rules.push(
+        `(deny file-read*`,
+        `  (subpath ${escapePath(normalizedPath)})`,
+        `  (with message "${logTag}"))`,
+      )
+    }
+  }
+
   // Allow stat/lstat on all directories so that realpath() can traverse
   // path components within denied regions. Without this, C realpath() fails
   // when resolving symlinks because it needs to lstat every intermediate

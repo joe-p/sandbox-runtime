@@ -886,6 +886,19 @@ async function generateFilesystemArgs(
     }
   }
 
+  // Include denyReadAfterAllow paths - these are processed after allowRead
+  // on macOS, and on Linux we achieve the same effect by concatenating them
+  // to the deny list since file denies only apply when there's no exact allowRead match
+  for (const p of readConfig?.denyAfterAllow || []) {
+    if (normalizePathForSandbox(p) === '/') {
+      for (const child of fs.readdirSync('/')) {
+        if (!rootSkip.has(child)) readDenyPaths.push('/' + child)
+      }
+    } else {
+      readDenyPaths.push(p)
+    }
+  }
+
   // Always hide /etc/ssh/ssh_config.d to avoid permission issues with OrbStack
   // SSH is very strict about config file permissions and ownership, and they can
   // appear wrong inside the sandbox causing "Bad owner or permissions" errors

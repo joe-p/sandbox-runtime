@@ -16,6 +16,13 @@
 export interface FsReadRestrictionConfig {
   denyOnly: string[]
   allowWithinDeny?: string[]
+  /**
+   * Paths to deny that take precedence over allowWithinDeny.
+   * Used to block specific files within directories that are otherwise allowed.
+   * These rules are applied after allowWithinDeny, allowing them to override
+   * previous allow rules.
+   */
+  denyAfterAllow?: string[]
 }
 
 /**

@@ -906,3 +906,134 @@ describe.if(isMacOS)('macOS Seatbelt allowMachLookup', () => {
     expect(result.status).toBe(0)
   })
 })
+
+describe.if(isMacOS)('macOS Seatbelt denyReadAfterAllow', () => {
+  const TEST_BASE_DIR = join(
+    tmpdir(),
+    'seatbelt-deny-after-allow-test-' + Date.now(),
+  )
+  const ALLOWED_DIR = join(TEST_BASE_DIR, 'allowed-dir')
+  const SECRET_FILE = join(ALLOWED_DIR, 'secret.txt')
+  const NORMAL_FILE = join(ALLOWED_DIR, 'normal.txt')
+  const SECRET_CONTENT = 'SECRET_DATA'
+  const NORMAL_CONTENT = 'NORMAL_DATA'
+
+  beforeAll(() => {
+    mkdirSync(ALLOWED_DIR, { recursive: true })
+    writeFileSync(SECRET_FILE, SECRET_CONTENT)
+    writeFileSync(NORMAL_FILE, NORMAL_CONTENT)
+  })
+
+  afterAll(() => {
+    if (existsSync(TEST_BASE_DIR)) {
+      rmSync(TEST_BASE_DIR, { recursive: true, force: true })
+    }
+  })
+
+  it('should block reading specific files in an allowed directory', () => {
+    const readConfig: FsReadRestrictionConfig = {
+      denyOnly: ['/Users'],
+      allowWithinDeny: [ALLOWED_DIR],
+      denyAfterAllow: [SECRET_FILE],
+    }
+
+    const wrappedCommand = wrapCommandWithSandboxMacOS({
+      command: `cat ${SECRET_FILE}`,
+      needsNetworkRestriction: false,
+      readConfig,
+      writeConfig: undefined,
+    })
+
+    const result = spawnSync(wrappedCommand, {
+      shell: true,
+      encoding: 'utf8',
+      timeout: 5000,
+    })
+
+    // Reading the secret file should fail
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain('Operation not permitted')
+    expect(result.stdout).not.toContain(SECRET_CONTENT)
+  })
+
+  it('should allow reading non-denied files in the same allowed directory', () => {
+    const readConfig: FsReadRestrictionConfig = {
+      denyOnly: ['/Users'],
+      allowWithinDeny: [ALLOWED_DIR],
+      denyAfterAllow: [SECRET_FILE],
+    }
+
+    const wrappedCommand = wrapCommandWithSandboxMacOS({
+      command: `cat ${NORMAL_FILE}`,
+      needsNetworkRestriction: false,
+      readConfig,
+      writeConfig: undefined,
+    })
+
+    const result = spawnSync(wrappedCommand, {
+      shell: true,
+      encoding: 'utf8',
+      timeout: 5000,
+    })
+
+    // Reading the normal file should succeed
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain(NORMAL_CONTENT)
+  })
+
+  it('should support glob patterns in denyReadAfterAllow', () => {
+    const readConfig: FsReadRestrictionConfig = {
+      denyOnly: ['/Users'],
+      allowWithinDeny: [ALLOWED_DIR],
+      denyAfterAllow: [`${ALLOWED_DIR}/*.txt`],
+    }
+
+    const wrappedCommand = wrapCommandWithSandboxMacOS({
+      command: `cat ${SECRET_FILE}`,
+      needsNetworkRestriction: false,
+      readConfig,
+      writeConfig: undefined,
+    })
+
+    const result = spawnSync(wrappedCommand, {
+      shell: true,
+      encoding: 'utf8',
+      timeout: 5000,
+    })
+
+    // Reading any .txt file should be blocked by glob pattern
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain('Operation not permitted')
+  })
+
+  it('should emit deny rules after allow rules in profile', () => {
+    const readConfig: FsReadRestrictionConfig = {
+      denyOnly: ['/Users'],
+      allowWithinDeny: ['/Users/john/workspace'],
+      denyAfterAllow: ['/Users/john/workspace/.env'],
+    }
+
+    const wrappedCommand = wrapCommandWithSandboxMacOS({
+      command: 'true',
+      needsNetworkRestriction: false,
+      readConfig,
+      writeConfig: undefined,
+    })
+
+    // Find positions of allow and deny rules in the profile
+    const allowWorkspacePos = wrappedCommand.indexOf(
+      '(allow file-read*\\n  (subpath "/Users/john/workspace")',
+    )
+    const denyEnvPos = wrappedCommand.indexOf(
+      '(deny file-read*\\n  (subpath "/Users/john/workspace/.env")',
+    )
+
+    // Both rules should be present
+    expect(allowWorkspacePos).toBeGreaterThan(-1)
+    expect(denyEnvPos).toBeGreaterThan(-1)
+
+    // The deny rule should appear after the allow rule in the profile
+    // (seatbelt uses last-match-wins semantics)
+    expect(denyEnvPos).toBeGreaterThan(allowWorkspacePos)
+  })
+})

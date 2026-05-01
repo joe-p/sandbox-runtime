@@ -278,4 +278,48 @@ describe('Config Validation', () => {
       expect(result.data.ripgrep).toBeUndefined()
     }
   })
+
+  test('should validate config with denyReadAfterAllow', () => {
+    const config = {
+      network: {
+        allowedDomains: [],
+        deniedDomains: [],
+      },
+      filesystem: {
+        denyRead: ['/Users'],
+        allowRead: ['/Users/john/workspace'],
+        denyReadAfterAllow: ['/Users/john/workspace/.env'],
+        allowWrite: [],
+        denyWrite: [],
+      },
+    }
+
+    const result = SandboxRuntimeConfigSchema.safeParse(config)
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.filesystem.denyReadAfterAllow).toEqual([
+        '/Users/john/workspace/.env',
+      ])
+    }
+  })
+
+  test('should validate config without denyReadAfterAllow (optional field)', () => {
+    const config = {
+      network: {
+        allowedDomains: [],
+        deniedDomains: [],
+      },
+      filesystem: {
+        denyRead: [],
+        allowWrite: [],
+        denyWrite: [],
+      },
+    }
+
+    const result = SandboxRuntimeConfigSchema.safeParse(config)
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.filesystem.denyReadAfterAllow).toBeUndefined()
+    }
+  })
 })

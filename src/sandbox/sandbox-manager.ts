@@ -632,9 +632,23 @@ async function wrapWithSandbox(
       expandedAllowRead.push(stripped)
     }
   }
+  const rawDenyReadAfterAllow =
+    customConfig?.filesystem?.denyReadAfterAllow ??
+    config?.filesystem?.denyReadAfterAllow ??
+    []
+  const expandedDenyReadAfterAllow: string[] = []
+  for (const p of rawDenyReadAfterAllow) {
+    const stripped = removeTrailingGlobSuffix(p)
+    if (getPlatform() === 'linux' && containsGlobChars(stripped)) {
+      expandedDenyReadAfterAllow.push(...expandGlobPattern(p))
+    } else {
+      expandedDenyReadAfterAllow.push(stripped)
+    }
+  }
   const readConfig = {
     denyOnly: expandedDenyRead,
     allowWithinDeny: expandedAllowRead,
+    denyAfterAllow: expandedDenyReadAfterAllow,
   }
 
   // Check if network config is specified - this determines if we need network restrictions
