@@ -180,6 +180,14 @@ export const FilesystemConfigSchema = z.object({
       'Paths to re-allow reading within denied regions (takes precedence over denyRead). ' +
         'Use with denyRead to deny a broad region then allow back specific subdirectories.',
     ),
+  denyReadAfterAllow: z
+    .array(filesystemPathSchema)
+    .optional()
+    .describe(
+      'Paths to deny reading that take precedence over allowRead. Used to block specific files ' +
+        'within directories that are otherwise allowed. These rules are applied after allowRead in the seatbelt profile. ' +
+        'Only supported on macOS (ignored on Linux).',
+    ),
   allowWrite: z
     .array(filesystemPathSchema)
     .describe('Paths allowed for writing'),

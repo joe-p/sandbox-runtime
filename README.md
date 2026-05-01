@@ -115,7 +115,7 @@ Both filesystem and network isolation are required for effective sandboxing. Wit
 
 **Filesystem Isolation** enforces read and write restrictions:
 
-- **Read** (deny-then-allow pattern): By default, read access is allowed everywhere. You can deny broad regions (e.g., `/Users`) and then re-allow specific paths within them (e.g., `.`). `allowRead` takes precedence over `denyRead` — the opposite of write, where `denyWrite` takes precedence over `allowWrite`.
+- **Read** (deny-then-allow-then-deny pattern): By default, read access is allowed everywhere. You can deny broad regions (e.g., `/Users`) and then re-allow specific paths within them (e.g., `.`). `allowRead` takes precedence over `denyRead`. On macOS, you can further deny specific files within allowed paths using `denyReadAfterAllow`, which takes precedence over `allowRead`. This is the opposite of write, where `denyWrite` takes precedence over `allowWrite`.
 - **Write** (allow-only pattern): By default, write access is denied everywhere. You must explicitly allow paths (e.g., `.`, `/tmp`). An empty allow list means no write access.
 
 **Network Isolation** (allow-only pattern): By default, all network access is denied. You must explicitly allow domains. An empty allowedDomains list means no network access. Network traffic is routed through proxy servers running on the host:
@@ -306,6 +306,7 @@ Uses two different patterns:
 
 - `filesystem.denyRead` - Array of paths to deny read access. Empty array = full read access.
 - `filesystem.allowRead` - Array of paths to re-allow read access within denied regions (takes precedence over denyRead). **Note:** this is the opposite of write, where `denyWrite` takes precedence over `allowWrite`.
+- `filesystem.denyReadAfterAllow` - _(macOS only)_ Array of paths to deny read access that takes precedence over `allowRead`. Use this to block specific files within directories that are otherwise allowed. These rules are applied after `allowRead` in the seatbelt profile, allowing them to override previous allow rules. Ignored on Linux.
 
 **Write restrictions** (allow-only pattern) - all writes denied by default:
 
@@ -327,6 +328,7 @@ Examples:
 - `"allowWrite": ["src/**/*.ts"]` - Allow write to all `.ts` files in `src/` and subdirectories
 - `"denyRead": ["~/.ssh"]` - Deny read to SSH directory
 - `"denyRead": ["/Users"], "allowRead": ["."]` - Deny read to all of `/Users`, but re-allow the current directory
+- `"denyRead": ["/Users"], "allowRead": ["."], "denyReadAfterAllow": [".env"]` - Deny read to all of `/Users`, re-allow the current directory, but block `.env` files within it
 - `"denyWrite": [".env"]` - Deny write to `.env` file (even if current directory is allowed)
 
 **Path Syntax (Linux):**
@@ -405,6 +407,26 @@ Examples:
 ```
 
 This denies reading anything under `/Users` (or `/home` on Linux), then re-allows the current working directory. System paths (`/usr`, `/lib`, etc.) remain readable.
+
+**Block sensitive files in allowed workspace** (macOS only):
+
+```json
+{
+  "network": {
+    "allowedDomains": ["npmjs.org", "*.npmjs.org"],
+    "deniedDomains": []
+  },
+  "filesystem": {
+    "denyRead": ["/Users"],
+    "allowRead": ["."],
+    "denyReadAfterAllow": [".env", "**/.npmrc", "secrets/**"],
+    "allowWrite": ["."],
+    "denyWrite": [".env", "**/.npmrc"]
+  }
+}
+```
+
+Use `denyReadAfterAllow` to block specific files within an otherwise readable directory. This is useful for preventing access to sensitive files (`.env`, `.npmrc`, SSH keys, etc.) while allowing general workspace access. Note that `denyReadAfterAllow` is only supported on macOS and is ignored on Linux.
 
 ### Common Issues and Tips
 
@@ -496,8 +518,8 @@ The BPF filter and `apply-seccomp` loader are compiled from C source in `vendor/
 The sandbox runs HTTP and SOCKS5 proxy servers on the host machine that filter all network requests based on permission rules:
 
 1. **HTTP/HTTPS Traffic**: An HTTP proxy server intercepts requests and validates them against allowed/denied domains
-2. **Other Network Traffic**: A SOCKS5 proxy handles all other TCP connections (SSH, database connections, etc.)
-3. **Permission Enforcement**: The proxies enforce the `permissions` rules from your configuration
+1. **Other Network Traffic**: A SOCKS5 proxy handles all other TCP connections (SSH, database connections, etc.)
+1. **Permission Enforcement**: The proxies enforce the `permissions` rules from your configuration
 
 **Platform-specific proxy communication:**
 
@@ -514,18 +536,25 @@ Filesystem restrictions are enforced at the OS level:
 
 **Default filesystem permissions:**
 
-- **Read** (deny-then-allow): Allowed everywhere by default. You can deny broad regions, then re-allow specific paths within them. `allowRead` takes precedence over `denyRead`.
+- **Read** (deny-then-allow): Allowed everywhere by default. You can deny broad regions, then re-allow specific paths within them. `allowRead` takes precedence over `denyRead`. On macOS, `denyReadAfterAllow` can block specific files within allowed directories.
 
   - Example: `denyRead: ["~/.ssh"]` to block access to SSH keys
   - Example: `denyRead: ["/Users"], allowRead: ["."]` to block all of `/Users` except the workspace
+  - Example: `denyRead: ["/Users"], allowRead: ["."], denyReadAfterAllow: [".env"]` to block `.env` files in the workspace (macOS only)
   - Empty `denyRead: []` = full read access (nothing denied)
 
 - **Write** (allow-only): Denied everywhere by default. You must explicitly allow paths.
+
   - Example: `allowWrite: [".", "/tmp"]` to allow writes to current directory and /tmp
   - Empty `allowWrite: []` = no write access (nothing allowed)
   - `denyWrite` creates exceptions within allowed paths (deny takes precedence)
 
-**Precedence is intentionally opposite for reads vs writes:** `allowRead` overrides `denyRead`, while `denyWrite` overrides `allowWrite`. This lets you carve out readable regions within denied areas, and carve out protected regions within writable areas.
+**Precedence for reads vs writes:**
+
+- **Reads**: `denyReadAfterAllow` > `allowRead` > `denyRead` (macOS only - `denyReadAfterAllow` allows blocking specific files within allowed directories)
+- **Writes**: `denyWrite` > `allowWrite` (deny takes precedence)
+
+This lets you carve out readable regions within denied areas, and carve out protected regions within writable areas.
 
 ### Mandatory Deny Paths (Auto-Protected Files)
 
@@ -579,11 +608,12 @@ On Linux, the sandbox uses **seccomp BPF (Berkeley Packet Filter)** to block Uni
 
 1. **Baked-in BPF filter**: The package ships a static `apply-seccomp` binary for x64 and arm64 with the seccomp BPF filter compiled in. The filter is architecture-specific but libc-independent, so the binary works with both glibc and musl.
 
-2. **Runtime detection**: The sandbox automatically detects your system's architecture and uses the matching `apply-seccomp` binary.
+1. **Runtime detection**: The sandbox automatically detects your system's architecture and uses the matching `apply-seccomp` binary.
 
-3. **Syscall filtering**: The BPF filter intercepts the `socket()` syscall and blocks creation of `AF_UNIX` sockets by returning `EPERM`. This prevents sandboxed code from creating new Unix domain sockets.
+1. **Syscall filtering**: The BPF filter intercepts the `socket()` syscall and blocks creation of `AF_UNIX` sockets by returning `EPERM`. This prevents sandboxed code from creating new Unix domain sockets.
 
-4. **Two-stage application using apply-seccomp binary**:
+1. **Two-stage application using apply-seccomp binary**:
+
    - Outer bwrap creates the sandbox with filesystem, network, and PID namespace restrictions
    - Network bridging processes (socat) start inside the sandbox (need Unix sockets)
    - apply-seccomp creates a nested user+PID+mount namespace and remounts `/proc`
@@ -604,8 +634,8 @@ On Linux, the sandbox uses **seccomp BPF (Berkeley Packet Filter)** to block Uni
 When a sandboxed process attempts to access a restricted resource:
 
 1. **Blocks the operation** at the OS level (returns `EPERM` error)
-2. **Logs the violation** (platform-specific mechanisms)
-3. **Notifies the user** (in Claude Code, this triggers a permission prompt)
+1. **Logs the violation** (platform-specific mechanisms)
+1. **Notifies the user** (in Claude Code, this triggers a permission prompt)
 
 **macOS**: The sandbox runtime taps into macOS's system sandbox violation log store. This provides real-time notifications with detailed information about what was attempted and why it was blocked. This is the same mechanism Claude Code uses for violation detection.
 
