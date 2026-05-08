@@ -3,6 +3,9 @@
  * This is the main configuration interface that consumers pass to SandboxManager.initialize()
  */
 
+import type { FilterRequestCallback } from './request-filter.js'
+
+import { isAbsolute } from 'node:path'
 import { z } from 'zod'
 
 /**
@@ -54,6 +57,18 @@ const domainPatternSchema = z.string().refine(
  * Schema for filesystem paths
  */
 const filesystemPathSchema = z.string().min(1, 'Path cannot be empty')
+
+/**
+ * Schema for an absolute path to an external binary.
+ * Relative paths are rejected to prevent PATH/CWD-based hijacking — these
+ * overrides are intended for admin-managed installs at fixed locations.
+ */
+const binaryPathSchema = z
+  .string()
+  .min(1, 'Path cannot be empty')
+  .refine(val => isAbsolute(val), {
+    message: 'Binary path must be absolute',
+  })
 
 /**
  * Schema for MITM proxy configuration
@@ -160,6 +175,40 @@ export const NetworkConfigSchema = z.object({
   mitmProxy: MitmProxyConfigSchema.optional().describe(
     'Optional MITM proxy configuration. Routes matching domains through an upstream proxy via Unix socket while SRT still handles allow/deny filtering.',
   ),
+  filterRequest: z
+    .custom<FilterRequestCallback>(v => typeof v === 'function', {
+      message: 'filterRequest must be a function',
+    })
+    .optional()
+    .describe(
+      'Per-request filter callback. Receives the parsed HTTP request ' +
+        '(web-standard Request) and returns {action, reason?}. Denied ' +
+        'requests get a 403 with the reason. If the callback throws, the ' +
+        'request is denied. Applies to plain HTTP through the proxy and, ' +
+        'when tlsTerminate is configured, to terminated HTTPS. SRT does not ' +
+        'provide a policy language; library consumers own matching.',
+    ),
+  tlsTerminate: z
+    .object({
+      caCertPath: z
+        .string()
+        .min(1)
+        .describe(
+          'Path to a PEM-encoded CA certificate. The sandboxed child is ' +
+            'configured to trust this CA, and the TLS-terminating proxy uses ' +
+            'it to sign per-host certificates.',
+        ),
+      caKeyPath: z
+        .string()
+        .min(1)
+        .describe('Path to the PEM-encoded private key for caCertPath.'),
+    })
+    .optional()
+    .describe(
+      '[EXPERIMENTAL] Enable in-process TLS termination so HTTPS ' +
+        'request/response bodies are visible to SRT. Requires a user-' +
+        'supplied CA cert+key; SRT does not generate one.',
+    ),
   parentProxy: ParentProxyConfigSchema.optional().describe(
     "Upstream HTTP proxy for outbound connections. When set, SRT's proxy " +
       'tunnels non-mitmProxy traffic through this parent instead of ' +
@@ -289,6 +338,18 @@ export const SandboxRuntimeConfigSchema = z.object({
   seccomp: SeccompConfigSchema.optional().describe(
     'Custom seccomp binary paths (Linux only).',
   ),
+  bwrapPath: binaryPathSchema
+    .optional()
+    .describe(
+      'Linux only: absolute path to the bwrap (bubblewrap) binary. ' +
+        'When set, this path is used directly instead of resolving "bwrap" via PATH.',
+    ),
+  socatPath: binaryPathSchema
+    .optional()
+    .describe(
+      'Linux only: absolute path to the socat binary. ' +
+        'When set, this path is used directly instead of resolving "socat" via PATH.',
+    ),
 })
 
 // Export inferred types
